@@ -1,0 +1,222 @@
+---
+Title: Exploratory Data Analysis of Instacart
+Output:
+  html_notebook: default
+---
+
+
+#Import the dataset 
+```{r}
+Aisles = read.csv("/Users/shimonyagrawal/Desktop/Instacart-market-basket-analysis/aisles.csv")
+Departments = read.csv("/Users/shimonyagrawal/Desktop/Instacart-market-basket-analysis/departments.csv")
+Order_Prior = read.csv("/Users/shimonyagrawal/Desktop/Instacart-market-basket-analysis/order_products__prior.csv")
+Orders = read.csv("/Users/shimonyagrawal/Desktop/Instacart-market-basket-analysis/orders.csv")
+Products = read.csv("/Users/shimonyagrawal/Desktop/Instacart-market-basket-analysis/products.csv")
+```
+#install packages
+```{r}
+install.packages("DBI")
+install.packages("odbc")
+install.packages("tidyverse")
+install.packages("lubridate")
+install.packages("GGally")
+install.packages("forecast")
+install.packages("ggplot2")
+install.packages("readr")
+install.packages("dplyr")
+install.packages("treemap")
+install.packages("scales")
+install.packages("tidyr")
+install.packages("arules")
+install.packages("arulesViz")
+install.packages("methods")
+install.packages("plyr")
+
+library(DBI)
+library(odbc)
+library(tidyverse)
+library(lubridate)
+library (GGally)
+library(forecast)
+library(ggplot2)
+library(readr)
+library(dplyr)
+library(treemap)
+library(scales)
+library(tidyr)
+library(arules)
+library(arulesViz)
+library(methods)
+library(plyr)
+```
+
+#Create a main data frame of the data set with relevant information 
+```{r}
+eda_df <- Products %>% 
+  left_join(Aisles, by = "aisle_id") %>% 
+  left_join(Departments, by = "department_id") %>% 
+  left_join(Order_Prior, by = "product_id") %>%
+  left_join(Orders, by = "order_id") %>% 
+  drop_na()
+
+view(eda_df)
+
+```
+
+#How many items do people order in a single purchase? 
+```{r}
+Order_Prior %>% 
+  group_by(order_id) %>% 
+  dplyr::summarize(n_items = last(add_to_cart_order)) %>%
+  ggplot(aes(x=n_items)) + 
+  geom_histogram(stat = "count", fill = "khaki") +
+  geom_rug() +
+  coord_cartesian(xlim = c(0,60))
+  
+```
+
+#What are Instacart's most ordered items?
+```{r}
+MostSold = eda_df %>%
+  select(product_id, product_name) %>%
+  group_by(product_name) %>%
+  dplyr::summarise(TotalOrders = n())
+
+Top15Sold <- MostSold %>%
+  filter(TotalOrders > 92957)
+
+ggplot(data=Top15Sold, aes(x = product_name, y = TotalOrders)) +
+  geom_bar(stat = "identity", fill = "khaki2") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  
+```
+
+#What products do people order the most: organic vs non organic products?
+```{r}
+Organic_Nonorganic <- Products %>%
+  mutate(organic=ifelse(str_detect(str_to_lower(Products$product_name),'organic'),"organic","not organic"), organic= as.factor(organic))
+
+OrganicPro <- Organic_Nonorganic %>%
+  filter(organic == "organic") %>%
+  left_join(eda_df, by = "product_id") %>%
+  select (product_id, product_name.x) %>% 
+  group_by(product_name.x) %>%
+  dplyr::summarise(TotalOrganicProducts = n())
+
+Top15OrganicProducts <- OrganicPro %>%
+  filter(TotalOrganicProducts > 78805)
+
+ggplot(data=Top15OrganicProducts, aes(x=product_name.x, y=TotalOrganicProducts))+
+  geom_bar(stat="identity", fill="lightpink")+
+  theme(axis.text.x=element_text(angle=90, hjust=1, vjust=1))+
+  ggtitle("Top 15 Organic Products")
+
+NonorganicPro <- Organic_Nonorganic %>%
+  filter(organic == "not organic") %>%
+  left_join(eda_df, by = "product_id") %>%
+  select (product_id, product_name.x) %>% 
+  group_by(product_name.x) %>%
+  dplyr::summarise(TotalNonOrganicProducts = n())
+
+Top15NonorganicProducts <- NonorganicPro %>%
+  filter(TotalNonOrganicProducts > 56768)
+
+ggplot(data=Top15NonorganicProducts, aes(x=product_name.x, y=TotalNonOrganicProducts))+
+  geom_bar(stat="identity", fill="slategray2")+
+  theme(axis.text.x=element_text(angle=90, hjust=1, vjust=1))+
+  ggtitle("Top 15 Non-Organic Products")
+  
+```
+
+#What hour of day and day of week most products are ordered?
+```{r}
+#hour of day
+OrderByHour <- Orders %>%
+  select(order_id, order_hour_of_day)%>%
+  group_by(order_hour_of_day)%>%
+  dplyr::count()
+
+ggplot(data=OrderByHour, aes(x=order_hour_of_day, y= n))+
+  geom_line(color = "palevioletred") +
+  ggtitle("Products ordered by Hour of Day") +
+  xlab("Hours of Day") +
+  ylab("No. of Products")
+  
+MeanOrderHour <- Orders %>%
+  dplyr::summarise(AvgHour = mean(order_hour_of_day))
+  
+#day of week
+OrderByDay <- Orders %>%
+  select (order_id, order_dow) %>%
+  group_by(order_dow) %>%
+  dplyr::count ()
+
+ggplot(data=OrderByDay, aes(x=order_dow, y=n))+
+  geom_line(color = "palevioletred") +
+  ggtitle ("Product Ordered by Days of Week") +
+  xlab("Days of Week") +
+  ylab ("No. of Products")
+
+MeanOrderWeek <- Orders %>%
+  dplyr::summarise(AvgDay = mean(order_dow))
+  
+```
+
+#What items are first added to the cart by Instacart's users? 
+```{r}
+priority <- Order_Prior %>% 
+  group_by(product_id, add_to_cart_order) %>% 
+  dplyr::summarize(count = n()) %>%
+  mutate(average=count/sum(count)) %>%
+  filter(add_to_cart_order==1, count>10) %>%
+  arrange(desc(average)) %>%
+  mutate(average1= average*100000) %>%
+  left_join(Products, by="product_id") %>%
+  select(product_name, average1, average, count) %>%
+  ungroup() %>%
+  top_n(10, wt=average1)
+
+products <- c("Emergency Contraceptive", "Energy Iced Tea" ,"California Champagne",
+              "Cabernet Sauvignon", "Flavoured Vodka", "Draft Sake", "Organic Rasberry Tea",
+              "Soy Powder Infant Formula", "Nasal Decongestant Inhaler", "Infant Formula")
+
+count <- c(37,51,14,14,50,25,27,24,30,29)
+
+ggplot(data = priority,
+       aes(x = c("Emergency Contraceptive", "Energy Iced Tea" ,"California Champagne",
+                 "Cabernet Sauvignon", "Flavoured Vodka", "Draft Sake", "Organic Rasberry Tea",
+                 "Soy Powder Infant Formula", "Nasal Decongestant Inhaler", "Infant Formula"),
+           y= average1)) +
+  geom_bar(stat = "identity", fill = "lightblue") +
+  theme(axis.text.x=element_text(angle=90, hjust=1, vjust=1))+
+  ggtitle("Top Priority Products") +
+  xlab ("Product Names") +
+  ylab ("Frequency")
+  
+```
+
+#What are Instacart's most reordered products? 
+```{r}
+MostReordered_Number<- Order_Prior%>%
+  group_by(product_id)%>%
+  dplyr::summarize(proportion_reordered = mean(reordered), n=n())%>%
+  top_n(10, wt=n)%>%
+  arrange(desc(proportion_reordered))%>%
+  left_join(Products,by="product_id")
+
+#pie chart
+names <- c("Banana", "Bag of Organic Bananas", "Organic Whole Milk", "Organic Hass Avocado",
+           "Organic Strawberries", "Organic Baby Spinach", "Organic Avocado",
+           "Strawberries", "Larger Lemon", "Limes")
+n <- c(472565, 379450, 137905,213584,264683,	241921,176815,142951,152657,140627)
+
+pie(n, names, main = "Most Reordered Products")
+
+```
+#When do Instacart's users place the next order? 
+```{r}
+Orders %>% 
+  ggplot(aes(x=days_since_prior_order)) + 
+  geom_histogram(stat="count",fill="lightblue2")
+  
+```
