@@ -1,0 +1,93 @@
+--- 
+Title: Market Basket Analysis of Instacart
+output:
+  html_notebook: default
+  toc: yes
+pagetitle: Market Basket Analysis of Instacart 
+---
+
+#Import the dataset
+``` {r}
+Aisles = read.csv("/Users/shimonyagrawal/Desktop/Instacart-market-basket-analysis/aisles.csv")
+Departments = read.csv("/Users/shimonyagrawal/Desktop/Instacart-market-basket-analysis/departments.csv")
+Order_Prior = read.csv("/Users/shimonyagrawal/Desktop/Instacart-market-basket-analysis/order_products__prior.csv")
+Orders = read.csv("/Users/shimonyagrawal/Desktop/Instacart-market-basket-analysis/orders.csv")
+Products = read.csv("/Users/shimonyagrawal/Desktop/Instacart-market-basket-analysis/products.csv")
+```
+
+#install packages
+``` {r}
+install.packages("DBI")
+install.packages("odbc")
+install.packages("tidyverse")
+install.packages("lubridate")
+install.packages("GGally")
+install.packages("forecast")
+install.packages("ggplot2")
+install.packages("readr")
+install.packages("dplyr")
+install.packages("treemap")
+install.packages("scales")
+install.packages("tidyr")
+install.packages("arules")
+install.packages("arulesViz")
+install.packages("methods")
+install.packages("plyr")
+
+library(DBI)
+library(odbc)
+library(tidyverse)
+library(lubridate)
+library (GGally)
+library(forecast)
+library(ggplot2)
+library(readr)
+library(plyr)
+library(dplyr)
+library(treemap)
+library(scales)
+library(tidyr)
+library(arules)
+library(arulesViz)
+library(methods)
+
+```
+
+##Market Basket Analysis of 3 million orders on Instacart 
+```{r}
+Order_filter <- Order_Prior %>%
+  filter(order_id < 5000)
+
+BasketData <- Order_Prior %>%
+  inner_join(Products, by = "product_id") %>%
+  group_by(order_id) %>%
+  summarise (basket = as.vector(list(product_name)))
+
+transactions <- as(BasketData$basket, "transactions")
+support = 0.03
+itemsets <- apriori(transactions, 
+                    parameter = list(target = "frequent itemsets", supp = support, conf = 0.60, minlen = 2),
+                    control = list (verbose = FALSE))
+
+par(mar = c(5,14,2,2)+.1)
+order_sets <- DATAFRAME(sort(itemsets, by = "support", decreasing = F))
+barplot(order_sets$support, names.arg = order_sets$items, xlim = c(0,0.02), 
+        horiz = T, las = 2, cex.names = .8, main = "Frequent Itemsets")
+mtext(paste("support:", support), padj = .8)
+
+```
+
+##Association rules to identify frequent items ordered together based on support, confidence and lift 
+```{r}
+rules <- apriori(transactions, parameter = list(supp = 0.0006, conf = 0.80, maxlen = 3), 
+                 control = list(verbose = FALSE))
+
+summary(rules)
+inspect(rules[1:20])
+top20rules <- (rules[1:20])
+plot(top20rules, method = "graph")
+
+inspect(sort(rules, by="confidence")[1:20])
+inspect(sort(rules, by="lift")[1:20])
+
+```
