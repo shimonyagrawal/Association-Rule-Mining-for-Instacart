@@ -1,4 +1,4 @@
-# exploratory-and-market-basket-analysis-for-Instacart
+# Exploratory and Market Basket Analysis for Instacart 
 
 ![Instacart Logo](Instacart.png)
 
